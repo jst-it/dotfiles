@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Files each screen recording from a previous day into
+# "Videos/Screen Recordings/<date>/", based on the date encoded in its
+# filename (screenrecording-YYYY-MM-DD_...). Recordings from today are left
+# in place so the compress/trim/keybind scripts - which look for the newest
+# screenrecording-*.mp4 directly in the videos dir - keep working normally
+# during the day; only once a file's date is in the past does it get filed
+# away. Matches on the "screenrecording-" prefix generally, so trimmed/
+# compressed derivatives (which keep that prefix) land in the same dated
+# folder as their original.
+#
+# Runs once per login (see the matching systemd user service), but is safe
+# to re-run any time - it just skips today's files and anything already
+# organized.
+set -uo pipefail
+
+[[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
+WATCH_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
+ORGANIZED_ROOT="$WATCH_DIR/Screen Recordings"
+TODAY=$(date +%Y-%m-%d)
+
+[[ -d "$WATCH_DIR" ]] || exit 0
+
+shopt -s nullglob
+for path in "$WATCH_DIR"/screenrecording-*; do
+    [[ -f "$path" ]] || continue
+    name=$(basename -- "$path")
+    [[ "$name" =~ ^screenrecording-([0-9]{4}-[0-9]{2}-[0-9]{2}) ]] || continue
+    date="${BASH_REMATCH[1]}"
+    [[ "$date" == "$TODAY" ]] && continue
+
+    dest_dir="$ORGANIZED_ROOT/$date"
+    mkdir -p -- "$dest_dir"
+    mv -n -- "$path" "$dest_dir/$name"
+done

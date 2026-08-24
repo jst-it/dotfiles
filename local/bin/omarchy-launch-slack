@@ -1,0 +1,37 @@
+#!/bin/bash
+# Launch-or-focus the Slack webapp.
+#
+# Slack's webapp shares a Chromium process with other webapps (Discord, X),
+# so a plain omarchy-launch-webapp bind would spawn a new window every press
+# instead of reusing the existing one. This script finds the existing window
+# by class and focuses it, launching only if none exists yet.
+#
+# Workspace placement is NOT enforced here -- it comes from the passive
+# window rule in hyprland.lua (class match -> "6 silent"), which only sets
+# where a fresh window lands. If you drag Slack to another workspace, it
+# stays there; this script won't pull it back to 6.
+
+set -euo pipefail
+
+CLASS_PATTERN='chrome-app\.slack\.com__client-Default'
+URL='https://app.slack.com/client'
+
+find_address() {
+  hyprctl clients -j | jq -r --arg p "$CLASS_PATTERN" '.[] | select(.class | test($p)) | .address' | head -n1
+}
+
+ADDRESS=$(find_address)
+
+if [[ -z $ADDRESS ]]; then
+  omarchy-launch-webapp "$URL" >/dev/null 2>&1 &
+  for _ in $(seq 1 50); do
+    ADDRESS=$(find_address)
+    [[ -n $ADDRESS ]] && break
+    sleep 0.2
+  done
+fi
+
+if [[ -n $ADDRESS ]]; then
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:$ADDRESS\" })" >/dev/null 2>&1 \
+    || hyprctl dispatch focuswindow "address:$ADDRESS" >/dev/null 2>&1
+fi

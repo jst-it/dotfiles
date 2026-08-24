@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# Toggles window border_size between 0 (off) and Omarchy's default, using
+# the same mechanism Omarchy's own "window gaps toggle" uses: presence of
+# a .lua file under ~/.local/state/omarchy/toggles/hypr/ means the flag is
+# on. ~/.config/hypr/hyprland.lua requires every file in that directory on
+# every config load (see default/hypr/toggles.lua), so writing/removing
+# this file is enough - no separate persistence step needed like
+# omarchy-gaps-adjust's state file, and it survives theme switches/reboots
+# the same way the stock gaps toggle does.
+#
+# Only touches border_size - unlike the stock gaps toggle (which also
+# zeroes gaps and rounding), this leaves everything else alone.
+
+flag_dir="$HOME/.local/state/omarchy/toggles/hypr"
+flag_file="$flag_dir/no-borders.lua"
+
+if [[ -f $flag_file ]]; then
+  rm -f "$flag_file"
+  state="on"
+else
+  mkdir -p "$flag_dir"
+  cat >"$flag_file" <<'LUA'
+-- Written by ~/.local/bin/omarchy-borders-toggle. Removed by the same
+-- script when borders are toggled back on.
+hl.config({
+  general = {
+    border_size = 0,
+  },
+})
+LUA
+  state="off"
+fi
+
+hyprctl reload >/dev/null
+
+notify-send -a "Omarchy" -r 998878 -t 1200 "Window borders" "${state}"

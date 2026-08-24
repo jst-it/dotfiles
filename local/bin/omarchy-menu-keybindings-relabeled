@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# Relabels numpad key symbols in the SUPER+K keybindings menu (e.g.
+# "KP_END" -> "NUM1") without forking the 597-line package-owned
+# omarchy-menu-keybindings.
+#
+# omarchy-menu-keybindings calls `omarchy-menu-select` as a bare command to
+# show the picker and read back the chosen line, then looks up that exact
+# text against its own cached records to find what to dispatch. We shadow
+# that one command with an exported bash function: relabel the choices on
+# the way in (forward_relabel), then relabel the selected line back to the
+# original keysym on the way out (reverse_relabel) so the lookup in the real
+# script still matches its cache. `command` inside the function bypasses the
+# shadow to reach the real binary, avoiding recursion.
+#
+# The keysym side is always the Num-Lock-OFF variant (KP_END, KP_DOWN, ...)
+# because that's the first bracketed symbol in the compiled XKB keymap,
+# which is what the real script's static resolution always reads -
+# independent of live Num Lock state.
+
+forward_relabel() {
+  sed -E \
+    -e 's/\bKP_END\b/NUM1/g' \
+    -e 's/\bKP_DOWN\b/NUM2/g' \
+    -e 's/\bKP_NEXT\b/NUM3/g' \
+    -e 's/\bKP_LEFT\b/NUM4/g' \
+    -e 's/\bKP_BEGIN\b/NUM5/g' \
+    -e 's/\bKP_RIGHT\b/NUM6/g' \
+    -e 's/\bKP_HOME\b/NUM7/g' \
+    -e 's/\bKP_UP\b/NUM8/g' \
+    -e 's/\bKP_PRIOR\b/NUM9/g' \
+    -e 's/\bKP_INSERT\b/NUM0/g'
+}
+
+reverse_relabel() {
+  sed -E \
+    -e 's/\bNUM1\b/KP_END/g' \
+    -e 's/\bNUM2\b/KP_DOWN/g' \
+    -e 's/\bNUM3\b/KP_NEXT/g' \
+    -e 's/\bNUM4\b/KP_LEFT/g' \
+    -e 's/\bNUM5\b/KP_BEGIN/g' \
+    -e 's/\bNUM6\b/KP_RIGHT/g' \
+    -e 's/\bNUM7\b/KP_HOME/g' \
+    -e 's/\bNUM8\b/KP_UP/g' \
+    -e 's/\bNUM9\b/KP_PRIOR/g' \
+    -e 's/\bNUM0\b/KP_INSERT/g'
+}
+
+omarchy-menu-select() {
+  forward_relabel | command omarchy-menu-select "$@" | reverse_relabel
+}
+export -f forward_relabel reverse_relabel omarchy-menu-select
+
+if [[ $1 == "--print" || $1 == "-p" ]]; then
+  omarchy-menu-keybindings "$@" | forward_relabel
+  exit
+fi
+
+exec omarchy-menu-keybindings "$@"

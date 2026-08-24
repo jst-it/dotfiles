@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# Launch the default browser, but if that default is Chromium, force it to
+# open the Personal profile specifically. Falls back to the normal Omarchy
+# default-browser launcher for anything else, so this stays correct if the
+# system default browser is ever changed away from Chromium.
+
+default_browser=$(env -u BROWSER xdg-settings get default-web-browser)
+
+if [[ $default_browser == "chromium.desktop" ]]; then
+  systemd-run --user --quiet --collect --unit="omarchy-browser-$(date +%s%N)" \
+    --property=StandardOutput=null --property=StandardError=null \
+    uwsm-app -- chromium --profile-directory='Default' --class=Chromium-Personal "$@"
+else
+  exec omarchy-launch-browser "$@"
+fi

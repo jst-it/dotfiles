@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Lists installed .desktop applications as tab-rows for the Menu.qml
+# "favorite-app-picker" provider (label \t value \t current). Standard XDG
+# precedence: user apps override system apps with the same desktop-id.
+# Skips NoDisplay/Hidden entries and non-Application types, same as any
+# normal app launcher would.
+
+declare -A seen
+
+emit() {
+  local dir="$1"
+  [[ -d $dir ]] || return
+
+  local file id name type nodisplay hidden
+  for file in "$dir"/*.desktop; do
+    [[ -f $file ]] || continue
+    id="${file##*/}"
+    id="${id%.desktop}"
+    [[ -n ${seen[$id]} ]] && continue
+    seen[$id]=1
+
+    type=$(grep -m1 '^Type=' "$file" | cut -d= -f2-)
+    [[ -n $type && $type != "Application" ]] && continue
+
+    nodisplay=$(grep -m1 '^NoDisplay=' "$file" | cut -d= -f2-)
+    [[ ${nodisplay,,} == "true" ]] && continue
+
+    hidden=$(grep -m1 '^Hidden=' "$file" | cut -d= -f2-)
+    [[ ${hidden,,} == "true" ]] && continue
+
+    name=$(grep -m1 '^Name=' "$file" | cut -d= -f2-)
+    [[ -z $name ]] && name="$id"
+
+    printf '%s\t%s\t\n' "$name" "$id"
+  done
+}
+
+{
+  emit "$HOME/.local/share/applications"
+  emit "/usr/local/share/applications"
+  emit "/usr/share/applications"
+} | sort -u

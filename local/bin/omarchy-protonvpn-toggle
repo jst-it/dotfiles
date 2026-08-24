@@ -1,0 +1,26 @@
+#!/bin/bash
+# Toggle Proton VPN connection state.
+# The official Linux client always names its WireGuard interface "proton0".
+# The CLI refuses to act while the GTK app (protonvpn-app) is running, so
+# catch that case with a clear message instead of a raw CLI error.
+
+if pgrep -x protonvpn-app >/dev/null; then
+  notify-send "Proton VPN" "Quit the Proton VPN app first — it can't run alongside the CLI toggle."
+  exit 1
+fi
+
+if nmcli -t -f DEVICE,STATE device status 2>/dev/null | grep -q '^proton0:connected'; then
+  output=$(protonvpn disconnect 2>&1)
+  if [ $? -eq 0 ]; then
+    notify-send "Proton VPN" "Disconnected"
+  else
+    notify-send "Proton VPN" "Disconnect failed: $(echo "$output" | tail -1)"
+  fi
+else
+  output=$(protonvpn connect 2>&1)
+  if [ $? -eq 0 ]; then
+    notify-send "Proton VPN" "Connected"
+  else
+    notify-send "Proton VPN" "Connect failed: $(echo "$output" | tail -1)"
+  fi
+fi

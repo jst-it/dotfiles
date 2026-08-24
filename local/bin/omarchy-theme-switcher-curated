@@ -1,0 +1,161 @@
+#!/bin/bash
+
+# Curated Omarchy theme switcher: shows every theme under
+# ~/.config/omarchy/themes (so future `omarchy theme install` additions
+# appear automatically) plus only the stock themes from $OMARCHY_PATH/themes
+# listed in ~/.config/omarchy/theme-picker-allowlist.
+#
+# Adapted from /usr/share/omarchy/bin/omarchy-theme-switcher (never edited
+# directly since that file is package-owned and gets reset on update).
+
+preload=false
+
+if [[ $1 == "--preload" ]]; then
+  preload=true
+  shift
+fi
+
+USER_THEMES_PATH="$HOME/.config/omarchy/themes"
+OMARCHY_THEMES_PATH="${OMARCHY_PATH:-/usr/share/omarchy}/themes"
+ALLOWLIST_FILE="$HOME/.config/omarchy/theme-picker-allowlist"
+CACHE_PATH="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/theme-selector-curated"
+preview_dir="$CACHE_PATH/previews"
+fast_signature_file="$CACHE_PATH/fast-signature"
+
+# The picker's on-screen label and its --print-name output both come
+# straight from the preview symlink's filename (title-cased, split on
+# "-"/"_" - see ImagePickerModel.js:labelForPath), and omarchy-theme-set
+# just lowercases + turns spaces into hyphens to resolve a dir. So a real
+# theme slug whose title-cased form doesn't round-trip cleanly needs an
+# explicit display name here; picked/looked-up display names get mapped
+# back to the real slug below before it's ever passed to omarchy-theme-set.
+declare -A DISPLAY_NAME_OVERRIDES=(
+  [dark-xp-omarchy]="darkXP"
+  [retropc]="retro-PC"
+)
+
+display_name_for() {
+  local real="$1"
+  printf '%s' "${DISPLAY_NAME_OVERRIDES[$real]:-$real}"
+}
+
+real_name_for_display() {
+  local display="$1" key
+  for key in "${!DISPLAY_NAME_OVERRIDES[@]}"; do
+    if [[ ${DISPLAY_NAME_OVERRIDES[$key]} == "$display" ]]; then
+      printf '%s' "$key"
+      return
+    fi
+  done
+  printf '%s' "$display"
+}
+
+mkdir -p "$preview_dir"
+
+find_preview() {
+  local theme_path="$1"
+  local preview preview_name
+
+  for preview_name in preview.png preview.jpg preview.jpeg preview.webp preview.gif preview.bmp; do
+    preview=$(find -L "$theme_path" -maxdepth 1 -type f -iname "$preview_name" -print -quit 2>/dev/null)
+
+    if [[ -n $preview ]]; then
+      printf '%s\n' "$preview"
+      return
+    fi
+  done
+
+  if [[ -d $theme_path/backgrounds ]]; then
+    find -L "$theme_path/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print 2>/dev/null | sort | head -n 1
+  fi
+}
+
+add_theme_preview() {
+  local theme_name="$1"
+  local preview="$2"
+  local display_name extension
+  display_name=$(display_name_for "$theme_name")
+  extension="${preview##*.}"
+  extension="${extension,,}"
+
+  [[ -n $preview ]] || return
+  [[ -e $preview_dir/$display_name.$extension ]] && return
+
+  ln -s "$preview" "$preview_dir/$display_name.$extension"
+}
+
+mapfile -t allowed_defaults < <(
+  [[ -f $ALLOWLIST_FILE ]] && grep -v '^\s*#' "$ALLOWLIST_FILE" | grep -v '^\s*$'
+)
+
+default_theme_paths() {
+  local name
+  for name in "${allowed_defaults[@]}"; do
+    [[ -d "$OMARCHY_THEMES_PATH/$name" ]] && printf '%s\n' "$OMARCHY_THEMES_PATH/$name"
+  done | sort
+}
+
+fast_signature="v2-curated"$'\n'
+[[ -f $ALLOWLIST_FILE ]] && fast_signature+="allowlist:$(stat -Lc '%Y' "$ALLOWLIST_FILE")"$'\n'
+
+if [[ -d $USER_THEMES_PATH ]]; then
+  fast_signature+="$USER_THEMES_PATH:$(stat -Lc '%Y' "$USER_THEMES_PATH")"$'\n'
+  while IFS= read -r -d '' theme_path; do
+    fast_signature+="$theme_path:$(stat -Lc '%Y' "$theme_path")"$'\n'
+  done < <(find -L "$USER_THEMES_PATH" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -print0 2>/dev/null | sort -z)
+fi
+
+while IFS= read -r theme_path; do
+  fast_signature+="$theme_path:$(stat -Lc '%Y' "$theme_path")"$'\n'
+done < <(default_theme_paths)
+
+if [[ ! -f $fast_signature_file ]] || ! cmp -s "$fast_signature_file" <(printf '%s' "$fast_signature"); then
+  rm -rf "$preview_dir"
+  mkdir -p "$preview_dir"
+
+  if [[ -d $USER_THEMES_PATH ]]; then
+    while IFS= read -r theme_path; do
+      theme_name=${theme_path##*/}
+      preview=$(find_preview "$theme_path")
+
+      if [[ -z $preview ]]; then
+        preview=$(find_preview "$OMARCHY_THEMES_PATH/$theme_name")
+      fi
+
+      add_theme_preview "$theme_name" "$preview"
+    done < <(find -L "$USER_THEMES_PATH" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -print 2>/dev/null | sort)
+  fi
+
+  while IFS= read -r theme_path; do
+    theme_name=${theme_path##*/}
+    preview=$(find_preview "$theme_path")
+    add_theme_preview "$theme_name" "$preview"
+  done < <(default_theme_paths)
+
+  printf '%s' "$fast_signature" >"$fast_signature_file"
+fi
+
+current_theme=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null)
+current_display=$(display_name_for "$current_theme")
+selected_preview=""
+for extension in png jpg jpeg webp gif bmp; do
+  if [[ -e $preview_dir/$current_display.$extension ]]; then
+    selected_preview="$preview_dir/$current_display.$extension"
+    break
+  fi
+done
+menu_args=(
+  --print-name
+  --show-labels
+  --filterable
+  --lazy-thumbnails
+  --selected "$selected_preview"
+)
+
+if [[ $preload == true ]]; then
+  menu_args+=(--preload)
+fi
+
+selection=$(omarchy-menu-images "${menu_args[@]}" "$preview_dir")
+[[ -n $selection ]] && real_name_for_display "$selection"
+exit 0

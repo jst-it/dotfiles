@@ -1,0 +1,11 @@
+# Safety net - sync.sh only ever copies an explicit allowlist in, but this
+# catches anything that slips through by accident.
+*.log
+*.sock
+*.pid
+*.bak.*
+.trust.json
+resume.json
+node_modules/
+__pycache__/
+*.pyc

@@ -1,0 +1,33 @@
+#!/bin/bash
+# Launch the workspace-5 music pair in a deterministic left-to-right order:
+# Spotify on the left, CLIAMP on the right.
+#
+# Hyprland's dwindle layout tiles each newly-mapped window to the right of the
+# one already there, so whichever window maps FIRST takes the left slot.
+# Spotify is a heavy Electron app that can take several seconds to map, while
+# CLIAMP is a terminal TUI that maps almost instantly -- staggering the two
+# launches by a second is not enough to guarantee the order. So start Spotify,
+# wait for its window to actually appear, and only then start CLIAMP.
+#
+# Workspace placement itself comes from the "5 silent" window rules in
+# hypr/hyprland.lua; this script only controls ordering.
+
+set -u
+
+# Launch Spotify directly instead of via omarchy-launch-spotify. That helper
+# focuses any existing window whose class OR TITLE matches /spotify/i, so an
+# unrelated window that merely mentions "Spotify" in its title makes it focus
+# that window and never start Spotify at all. At login we always want a launch.
+setsid uwsm-app -- /usr/bin/spotify </dev/null >/dev/null 2>&1 &
+
+# Wait up to 60s for Spotify's window to map before starting CLIAMP. Match on
+# class alone -- matching the title would hit the same false-positive trap.
+# If it never shows, fall through anyway rather than leaving CLIAMP unlaunched.
+for _ in $(seq 1 120); do
+  if hyprctl clients -j 2>/dev/null | jq -e '.[] | select(.class == "Spotify")' >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.5
+done
+
+exec omarchy-launch-tui cliamp --playlist Lofi

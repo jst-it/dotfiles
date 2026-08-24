@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# Rotates every tiled window on the active workspace one slot around the
+# stack, keeping each window's slot geometry fixed and just cycling which
+# window occupies it. Works for any layout shape (dwindle doesn't expose
+# tree structure over IPC, so this operates purely on window identity via
+# hl.dsp.window.swap({ target = address }), not directional/geometry-based
+# swapping) and any window count: 0/1 windows no-op, 2 windows degrades to
+# a plain swap (rotating 2 items IS swapping them), 3+ does a full cycle.
+#
+# Usage: omarchy-rotate-windows forward|reverse
+#
+# forward: each window moves to the NEXT slot (reading order: top-to-bottom,
+#          then left-to-right), wrapping the last window back to the first
+#          slot.
+# reverse: the mirror image - each window moves to the PREVIOUS slot.
+#
+# Algorithm (windows sorted into slots 1..n by reading order):
+#   forward: for i = 1..n-1: focus slot-i's window, swap it with slot-(i+1)'s
+#   reverse: for i = n..2:   focus slot-i's window, swap it with slot-(i-1)'s
+# Each step operates by window address (not position), so the correctness
+# doesn't depend on tracking which window has moved where - only the
+# initial slot order matters. Verified against Hyprland 0.56 live: 2 and 3
+# window cases, both directions.
+
+direction="$1"
+
+if [[ $direction != "forward" && $direction != "reverse" ]]; then
+  echo "Usage: omarchy-rotate-windows forward|reverse" >&2
+  exit 1
+fi
+
+read -r -d '' lua_body <<'LUA'
+local ws = hl.get_active_workspace()
+local wins = hl.get_workspace_windows(ws.id)
+local tiled = {}
+for i = 1, #wins do
+  local w = wins[i]
+  if not w.floating then
+    table.insert(tiled, w)
+  end
+end
+table.sort(tiled, function(a, b)
+  if a.at.y ~= b.at.y then return a.at.y < b.at.y end
+  return a.at.x < b.at.x
+end)
+local n = #tiled
+if n >= 2 then
+  if DIRECTION == "forward" then
+    for i = 1, n - 1 do
+      hl.dispatch(hl.dsp.focus({ window = "address:" .. tiled[i].address }))
+      hl.dispatch(hl.dsp.window.swap({ target = "address:" .. tiled[i + 1].address }))
+    end
+  else
+    for i = n, 2, -1 do
+      hl.dispatch(hl.dsp.focus({ window = "address:" .. tiled[i].address }))
+      hl.dispatch(hl.dsp.window.swap({ target = "address:" .. tiled[i - 1].address }))
+    end
+  end
+end
+return "rotated " .. tostring(n)
+LUA
+
+lua_script="local DIRECTION = \"$direction\"
+$lua_body"
+
+hyprctl repl "$lua_script" >/dev/null

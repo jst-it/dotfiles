@@ -1,0 +1,77 @@
+{
+  // Extend the Quickshell Omarchy menu with JSONC.
+  //
+  // IDs are object keys. The parent is inferred from the dotted id, so
+  // "personal.notes" appears under "personal", and "personal" appears on the
+  // root menu. Reuse an existing id to override/extend it.
+  //
+  // Fields:
+  //   icon        Nerd Font glyph shown in the icon column.
+  //   label       Visible row title.
+  //   action      Shell command to run. If omitted, the row is a submenu.
+  //   target      Existing submenu id to open. Use for links/aliases.
+  //   provider    Runtime provider function/command returning JSON rows.
+  //   aliases     alternate `omarchy menu summon <name>` routes; also searchable.
+  //   description Optional subtitle and extra search text.
+  //   when        Shell condition; hide row when it fails.
+  //   checked     Shell condition; append ✓ when it succeeds.
+  //
+  // Examples:
+  // "personal": {"icon":"","label":"Personal"},
+  // "personal.notes": {"icon":"󰎞","label":"Notes","action":"omarchy-launch-editor ~/notes"},
+  // "personal.files": {"icon":"","label":"Files","action":"uwsm-app -- nautilus ~/Documents"},
+  //
+  // Only use provider when a provider_name function or command named "name"
+  // returns JSON rows. Static submenus only need dotted ids.
+  //
+  // Example: replace the default About action by reusing the same id. Existing
+  // fields are kept unless overridden.
+  // "about": {"icon":"","label":"About","action":"omarchy-launch-or-focus-tui \"zsh -c 'fastfetch; read -k 1'\""},
+  // Overridden to always force opaque instead of toggling - the stock
+  // "toggle" action kept flipping bar.transparent on, with no way to tell
+  // what triggered it. This makes the row idempotent: opaque no matter how
+  // many times it's hit.
+  // NOTE: overrides here are NOT a sparse patch on top of the stock entry -
+  // each file's rows get fully normalized (missing icon -> "", missing label
+  // -> the raw id) before merging, and that normalized row replaces the base
+  // one field-by-field. So every override below restates icon/label/aliases
+  // in full, not just the field being changed - otherwise the row shows its
+  // raw id with no icon in the menu.
+  "style.bar.transparency": {"icon":"󰂵","label":"Transparency","action":"omarchy-bar transparent false"},
+
+  // Curated theme picker: shows every theme under ~/.config/omarchy/themes
+  // (so future installs auto-appear) plus only the stock themes listed in
+  // ~/.config/omarchy/theme-picker-allowlist. See
+  // ~/.local/bin/omarchy-theme-switcher-curated.
+  "style.theme": {"icon":"󰸌","label":"Theme","aliases":["theme","themes"],"action":"theme=$(omarchy-theme-switcher-curated); [[ -n $theme ]] && omarchy-theme-set \"$theme\""},
+
+  // Custom quick menu for the top-left bar button (cloned to mrrobot.menu,
+  // see ~/.config/omarchy/plugins/mrrobot.menu/BarWidget.qml, which opens
+  // this "favorites" route instead of "root"). Power actions reuse the
+  // exact same commands as the stock system.* rows, then pinned apps below.
+  // Add more apps by adding another "favorites.<name>" row here (direct
+  // child of "favorites", same level as lock/sleep/shutdown, so it shows
+  // on the same screen with no extra submenu click) - hot-reloads on save,
+  // no plugin/QML edit needed.
+  "favorites": {"icon":"\udb81\udcce","label":"Favorites"},
+  "favorites.lock": {"icon":"\uf023","label":"Lock","action":"omarchy-system-lock"},
+  "favorites.sleep": {"icon":"󰒲","label":"Sleep","when":"! omarchy-toggle-enabled suspend-off","action":"systemctl suspend"},
+  "favorites.shutdown": {"icon":"󰐥","label":"Shutdown","action":"omarchy-system-shutdown"},
+  "favorites.discord": {"icon":"󰙯","label":"Discord","action":"omarchy-launch-webapp https://discord.com/channels/@me"},
+  "favorites.ticktick": {"icon":"󰄵","label":"TickTick","action":"omarchy-launch-or-focus 'ticktick' 'uwsm-app -- ticktick'"},
+  "favorites.chromium-personal": {"icon":"\uf488","label":"Chromium (Personal)","action":"omarchy-launch-browser-personal"},
+  "favorites.chromium-school": {"icon":"\uf488","label":"Chromium (School)","action":"chromium --profile-directory='Profile 2' --class=Chromium-School"},
+  "favorites.terminal": {"icon":"\uf489","label":"Terminal","action":"xdg-terminal-exec"},
+  "favorites.btop": {"icon":"\udb80\udc3b","label":"btop++","action":"gtk-launch btop"},
+  // FAVORITES_APPS_INSERT_MARKER - omarchy-favorites-pin-app inserts newly
+  // pinned "favorites.<app>" rows right above this line, so they land
+  // after the built-ins above and "Add app..." stays last. Don't remove
+  // this comment.
+  "favorites.add": {"icon":"\udb81\udc15","label":"Add app...","provider":"favorite-app-picker"},
+
+  "vpn": {"icon":"󰖂","label":"Proton VPN"},
+  "vpn.toggle": {"icon":"󰢵","label":"Connect / Disconnect","action":"omarchy-protonvpn-toggle","checked":"nmcli -t -f DEVICE,STATE device status 2>/dev/null | grep -q '^proton0:connected'"},
+  "vpn.connect": {"icon":"󰢾","label":"Connect (fastest)","action":"protonvpn connect"},
+  "vpn.disconnect": {"icon":"󰢿","label":"Disconnect","action":"protonvpn disconnect"},
+  "vpn.app": {"icon":"","label":"Open Proton VPN app (tray)","description":"Opens the tray icon; quit it to use the CLI toggle/hotkey again","action":"uwsm-app -- protonvpn-app --start-minimized"}
+}

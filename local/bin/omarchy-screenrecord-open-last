@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Opens the most recently saved screen recording in Nautilus (file selected,
+# parent folder shown), compressing it first if it's over 19.5MB. Bound to
+# CTRL+ALT+PRINT so it always acts on whatever just finished recording,
+# without depending on the save-toast still being on screen or needing
+# right-click support the notification card doesn't have.
+set -uo pipefail
+
+latest=$("$HOME/.local/bin/omarchy-screenrecord-latest")
+
+if [[ -z "$latest" ]]; then
+    omarchy-notification-send --app-name "Screen Recording" -u critical \
+        "No recordings found"
+    exit 1
+fi
+
+nautilus --select "file://$latest"

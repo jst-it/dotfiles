@@ -1,0 +1,9 @@
+[Unit]
+Description=Run the screen-recording organizer at each day's rollover
+
+[Timer]
+OnCalendar=*-*-* 00:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

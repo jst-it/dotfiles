@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# Pins an installed app (by desktop-id, e.g. "chromium") to the Favorites
+# bar menu: adds a "favorites.<slug>" row to the user extensions.jsonc,
+# right before the FAVORITES_APPS_INSERT_MARKER comment (keeping "Add app"
+# pinned at the bottom of the list), then refreshes the menu so it shows up
+# immediately.
+
+set -euo pipefail
+
+desktop_id="${1:-}"
+if [[ -z $desktop_id ]]; then
+  echo "Usage: omarchy-favorites-pin-app <desktop-id>" >&2
+  exit 1
+fi
+
+find_desktop_file() {
+  local id="$1" dir
+  for dir in "$HOME/.local/share/applications" "/usr/local/share/applications" "/usr/share/applications"; do
+    [[ -f "$dir/$id.desktop" ]] && printf '%s\n' "$dir/$id.desktop" && return
+  done
+}
+
+desktop_file=$(find_desktop_file "$desktop_id")
+if [[ -z $desktop_file ]]; then
+  omarchy-notification-send "Pin app" "Couldn't find $desktop_id.desktop" || true
+  exit 1
+fi
+
+name=$(grep -m1 '^Name=' "$desktop_file" | cut -d= -f2-)
+[[ -z $name ]] && name="$desktop_id"
+
+slug=$(printf '%s' "$desktop_id" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+[[ -z $slug ]] && slug="app"
+
+extensions_file="$HOME/.config/omarchy/extensions/omarchy-menu.jsonc"
+row_key="favorites.$slug"
+
+if grep -qF "\"$row_key\":" "$extensions_file"; then
+  omarchy-notification-send "Pin app" "$name is already pinned to Favorites" || true
+  exit 0
+fi
+
+# Minimal JSON string escaping for the name (backslash and double quote).
+json_name=$(printf '%s' "$name" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+
+new_row="  \"$row_key\": {\"icon\":\"\\udb80\\udc3b\",\"label\":\"$json_name\",\"action\":\"gtk-launch $desktop_id\"},"
+
+if ! grep -qF "FAVORITES_APPS_INSERT_MARKER" "$extensions_file"; then
+  omarchy-notification-send "Pin app" "Favorites insert marker not found - see ~/.config/omarchy/extensions/omarchy-menu.jsonc" || true
+  exit 1
+fi
+
+# Plain line-based insertion via Python (not sed's i\, which interprets
+# backslashes in the appended text and would corrupt the \u escapes and
+# the escaped quote above). NEW_ROW passed via env var, not shell-quoted
+# into the script, so no escaping hazards either way.
+NEW_ROW="$new_row" EXT_FILE="$extensions_file" python3 -c '
+import os
+path = os.environ["EXT_FILE"]
+new_row = os.environ["NEW_ROW"]
+with open(path, encoding="utf-8") as f:
+    lines = f.readlines()
+out = []
+for line in lines:
+    if "FAVORITES_APPS_INSERT_MARKER" in line:
+        out.append(new_row + "\n")
+    out.append(line)
+with open(path, "w", encoding="utf-8") as f:
+    f.writelines(out)
+'
+
+omarchy menu refresh >/dev/null 2>&1 || true
+omarchy-notification-send "Pinned to Favorites" "$name" || true

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Copies the most recently saved screen recording to the clipboard as a file
+# (text/uri-list, same MIME Nautilus uses for its own file-copy) so Ctrl+V in
+# Discord/Slack/etc. attaches the video directly. Compresses it first if it's
+# over 19.5MB. Bound to SHIFT+ALT+PRINT, mirrors omarchy-screenrecord-open-last.
+#
+# The clipboard is cleared automatically after CLEAR_AFTER seconds, but only
+# if it still holds this exact file - if you've since copied something else,
+# that clear is a no-op.
+set -uo pipefail
+
+CLEAR_AFTER=120
+
+latest=$("$HOME/.local/bin/omarchy-screenrecord-latest")
+
+if [[ -z "$latest" ]]; then
+    omarchy-notification-send --app-name "Screen Recording" -u critical \
+        "No recordings found"
+    exit 1
+fi
+
+uri="file://$latest"
+wl-copy --type text/uri-list "$uri"
+omarchy-notification-send --app-name "Screen Recording" "Copied to clipboard" "$(basename "$latest")"
+
+(
+    sleep "$CLEAR_AFTER"
+    current=$(wl-paste --type text/uri-list 2>/dev/null)
+    [[ "$current" == "$uri" ]] && wl-copy --clear
+) &
+disown

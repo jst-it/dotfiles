@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "mrrobot.cliamp",
+  "name": "Cliamp",
+  "version": "1.0.0",
+  "author": "mrrobot",
+  "description": "Now-playing indicator for Cliamp (the terminal music player) - hidden unless Cliamp is running, click to play/pause",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Cliamp",
+    "description": "Shows Cliamp's current track when it's running and has media loaded. Click toggles play/pause.",
+    "category": "Media",
+    "allowMultiple": false
+  }
+}

@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Resets the outer window gap (gaps_out) to Omarchy's default (10) and
+# removes the persisted override in ~/.local/state/omarchy/gaps-out, so
+# ~/.config/hypr/looknfeel.lua falls back to that default on future
+# reloads/reboots too. gaps_in is never touched by omarchy-gaps-adjust, so
+# there's nothing to reset there. Uses `hyprctl eval` since Omarchy's Lua
+# config parser rejects `hyprctl keyword`.
+
+rm -f "$HOME/.local/state/omarchy/gaps-out"
+
+hyprctl eval "hl.config({ general = { gaps_out = 10 } })" >/dev/null
+
+notify-send -a "Omarchy" -t 1000 "Window gaps" "reset to default (out: 10)"

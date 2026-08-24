@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# Adjusts the outer window gap (gaps_out) only - gaps_in (between windows)
+# is left untouched at whatever looknfeel.lua sets it to. Applies live via
+# hyprctl eval (Omarchy's Lua config parser rejects `hyprctl keyword`), and
+# also persists the value to ~/.local/state/omarchy/gaps-out, which
+# ~/.config/hypr/looknfeel.lua re-applies on every config load. Without
+# that, a theme switch (which runs `hyprctl reload`) or a reboot would
+# reset gaps_out back to Omarchy's default of 10.
+#
+# Bound with { repeating = true } so holding the key keeps calling this
+# on every key-repeat tick (~25ms apart at the current repeat_rate) - step
+# is kept small (1) so a hold doesn't blow past sane values in under a
+# second.
+#
+# Notification is debounced: each tick cancels the previous pending
+# notify and schedules a new one 350ms out. Since ticks during a hold are
+# ~25ms apart, the scheduled notify only ever survives to fire once ticks
+# stop arriving - i.e. once the key is released - so you get exactly one
+# notification with the final value instead of one per tick.
+#
+# Usage: omarchy-gaps-adjust +1|-1
+
+step="$1"
+
+if [[ ! $step =~ ^[+-][0-9]+$ ]]; then
+  echo "Usage: omarchy-gaps-adjust +N|-N" >&2
+  exit 1
+fi
+
+current_out=$(hyprctl -j getoption general:gaps_out | jq -r '.css' | awk '{print $1}')
+new_out=$((current_out + step))
+if ((new_out < 0)); then
+  new_out=0
+elif ((new_out > 200)); then
+  new_out=200
+fi
+
+hyprctl eval "hl.config({ general = { gaps_out = $new_out } })" >/dev/null
+
+persist_dir="$HOME/.local/state/omarchy"
+mkdir -p "$persist_dir"
+echo "$new_out" >"$persist_dir/gaps-out"
+
+runtime_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-gaps"
+mkdir -p "$runtime_dir"
+pidfile="$runtime_dir/notify.pid"
+
+if [[ -f "$pidfile" ]]; then
+  kill "$(cat "$pidfile")" 2>/dev/null
+fi
+
+(
+  sleep 0.35
+  notify-send -a "Omarchy" -r 998877 -t 1000 "Window gaps" "out: ${new_out}"
+) &
+disown
+echo $! >"$pidfile"

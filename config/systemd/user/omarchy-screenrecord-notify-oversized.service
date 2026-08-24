@@ -1,0 +1,11 @@
+[Unit]
+Description=Notify when a screen recording is over 19.5MB (click to compress)
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/omarchy-screenrecord-notify-oversized
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

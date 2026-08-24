@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+"""Small Adwaita dialog for trimming a video: start time, end time, and a
+"trim to end of video" switch that ignores the end time. Runs
+`ffmpeg -i ... -ss ... [-to ...] -c:v libx264 ...` (re-encodes, since a
+stream-copy cut can only land on a keyframe and papers over the gap with an
+MP4 edit list — mpv honors that and looks fine, but Discord's web player
+ignores it and shows the pre-keyframe footage as a freeze-then-jump). Writes
+"<name>_trimmed.<ext>" next to the input, never touching the original."""
+import os
+import subprocess
+import sys
+import threading
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, GLib, Gtk
+
+
+def notify(title, body=""):
+    import shutil
+
+    binary = shutil.which("omarchy-notification-send")
+    if binary:
+        subprocess.Popen([binary, "--app-name", "Trim Video", title, body])
+    else:
+        subprocess.Popen(["notify-send", "-a", "Trim Video", title, body])
+
+
+def get_duration(input_path):
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", input_path,
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        return float(result.stdout.strip())
+    except (ValueError, subprocess.TimeoutExpired, OSError):
+        return None
+
+
+def has_audio(input_path):
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "a",
+                "-show_entries", "stream=index", "-of", "csv=p=0", input_path,
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        return bool(result.stdout.strip())
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def format_time(seconds):
+    seconds = int(round(seconds))
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
+def unique_output_path(input_path):
+    dir_ = os.path.dirname(input_path)
+    base = os.path.basename(input_path)
+    name, ext = os.path.splitext(base)
+    ext = ext or ".mp4"
+    candidate = os.path.join(dir_, f"{name}_trimmed{ext}")
+    n = 2
+    while os.path.exists(candidate):
+        candidate = os.path.join(dir_, f"{name}_trimmed{n}{ext}")
+        n += 1
+    return candidate
+
+
+class TrimWindow(Adw.ApplicationWindow):
+    def __init__(self, app, input_path):
+        super().__init__(application=app, title="Trim Video")
+        self.input_path = input_path
+        self.set_default_size(420, -1)
+        self.set_resizable(False)
+
+        toolbar_view = Adw.ToolbarView()
+
+        header = Adw.HeaderBar()
+        header.set_title_widget(Adw.WindowTitle(title="Trim Video", subtitle=os.path.basename(input_path)))
+
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.connect("clicked", lambda *_: self.close())
+        header.pack_start(cancel_btn)
+
+        self.trim_btn = Gtk.Button(label="Trim")
+        self.trim_btn.add_css_class("suggested-action")
+        self.trim_btn.connect("clicked", self.on_trim)
+        header.pack_end(self.trim_btn)
+
+        toolbar_view.add_top_bar(header)
+
+        duration = get_duration(input_path)
+
+        group = Adw.PreferencesGroup()
+        group.set_margin_top(18)
+        group.set_margin_bottom(6)
+        group.set_margin_start(18)
+        group.set_margin_end(18)
+
+        if duration is not None:
+            length_row = Adw.ActionRow(
+                title="Video length",
+                subtitle=f"0:00 – {format_time(duration)}",
+            )
+        else:
+            length_row = Adw.ActionRow(title="Video length", subtitle="unknown")
+        length_row.add_css_class("property")
+        group.add(length_row)
+
+        self.start_row = Adw.EntryRow(title="Start time (e.g. 0:10 or 00:00:10)")
+        group.add(self.start_row)
+
+        self.end_row = Adw.EntryRow(title="End time (e.g. 0:25 or 00:00:25)")
+        group.add(self.end_row)
+
+        self.end_switch = Adw.SwitchRow(title="Trim to end of video")
+        self.end_switch.connect("notify::active", self.on_toggle_end)
+        group.add(self.end_switch)
+
+        self.status = Gtk.Label(label="")
+        self.status.set_margin_top(6)
+        self.status.set_margin_bottom(18)
+        self.status.set_margin_start(18)
+        self.status.set_margin_end(18)
+        self.status.add_css_class("dim-label")
+        self.status.set_wrap(True)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.append(group)
+        box.append(self.status)
+
+        toolbar_view.set_content(box)
+        self.set_content(toolbar_view)
+        self.start_row.grab_focus()
+
+    def on_toggle_end(self, switch, _pspec):
+        active = switch.get_active()
+        self.end_row.set_sensitive(not active)
+        if active:
+            self.end_row.set_text("")
+
+    def on_trim(self, _btn):
+        start = self.start_row.get_text().strip()
+        end = self.end_row.get_text().strip()
+        to_end = self.end_switch.get_active()
+
+        if not start:
+            self.status.set_label("Start time is required.")
+            return
+        if not to_end and not end:
+            self.status.set_label('Enter an end time, or turn on "Trim to end of video".')
+            return
+
+        self.trim_btn.set_sensitive(False)
+        self.start_row.set_sensitive(False)
+        self.end_row.set_sensitive(False)
+        self.end_switch.set_sensitive(False)
+        self.status.set_label("Trimming…")
+
+        output = unique_output_path(self.input_path)
+        # -ss/-to as output options (after -i) => frame-accurate cut when
+        # re-encoding, instead of snapping to the nearest keyframe.
+        cmd = ["ffmpeg", "-y", "-i", self.input_path, "-ss", start]
+        if not to_end:
+            cmd += ["-to", end]
+        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18"]
+        cmd += ["-c:a", "aac", "-b:a", "192k"] if has_audio(self.input_path) else ["-an"]
+        cmd += [output]
+
+        def run():
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            GLib.idle_add(self.on_done, result, output)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def on_done(self, result, output):
+        if result.returncode == 0 and os.path.exists(output):
+            notify("Trim complete", os.path.basename(output))
+            self.close()
+        else:
+            lines = [l for l in (result.stderr or "").strip().splitlines() if l.strip()]
+            err_msg = lines[-1] if lines else "ffmpeg failed"
+            self.status.set_label(f"Failed: {err_msg}")
+            self.trim_btn.set_sensitive(True)
+            self.start_row.set_sensitive(True)
+            self.end_switch.set_sensitive(True)
+            if not self.end_switch.get_active():
+                self.end_row.set_sensitive(True)
+        return False
+
+
+class TrimApp(Adw.Application):
+    def __init__(self, input_path):
+        super().__init__(application_id="org.omarchy.TrimVideoDialog")
+        self.input_path = input_path
+
+    def do_activate(self):
+        win = TrimWindow(self, self.input_path)
+        win.present()
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: nautilus-trim-video-dialog <video-path>", file=sys.stderr)
+        sys.exit(1)
+    input_path = sys.argv[1]
+    if not os.path.isfile(input_path):
+        print(f"Not a file: {input_path}", file=sys.stderr)
+        sys.exit(1)
+    app = TrimApp(input_path)
+    app.run([])
+
+
+if __name__ == "__main__":
+    main()

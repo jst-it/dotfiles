@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# Two-pass ffmpeg encode of one or more videos to fit at or under 19.5MB.
+#
+# Usage: compress-video-19.5mb [--in-place] [--wait] <file> [file...]
+#
+# Default: writes "<name>_compressed.mp4" next to each input, original untouched.
+# --in-place: overwrites the input itself once the compressed result is ready
+#             (used by the screen-recording auto-notify flow, which only runs
+#             this after the user clicks "compress" on a notification).
+# --wait: run in the foreground instead of backgrounding+disowning, so a
+#         caller (e.g. the screen-recording keybinds) can block until the
+#         compressed file is actually in place before acting on it.
+set -uo pipefail
+
+TARGET_BYTES=$((19*1024*1024 + 1024*1024/2))   # 19.5 MiB
+SAFETY_BYTES=$(awk -v b="$TARGET_BYTES" 'BEGIN{printf "%d", b*0.97}')  # headroom for muxing overhead
+AUDIO_KBPS_DEFAULT=128
+MIN_AUDIO_KBPS=64
+MIN_VIDEO_KBPS=100
+
+IN_PLACE="false"
+WAIT="false"
+while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+    --in-place) IN_PLACE="true"; shift ;;
+    --wait) WAIT="true"; shift ;;
+    *) break ;;
+    esac
+done
+
+notify() {
+    omarchy-notification-send --app-name "Compress Video" "$1" "${2:-}" 2>/dev/null \
+        || notify-send -a "Compress Video" "$1" "${2:-}" 2>/dev/null || true
+}
+
+process_one() {
+    local input="$1"
+    [[ -f "$input" ]] || { notify "Compress Video failed" "Not a file: $input"; return; }
+
+    local dir base name output
+    dir=$(dirname -- "$input")
+    base=$(basename -- "$input")
+    name="${base%.*}"
+    if [[ "$IN_PLACE" == "true" ]]; then
+        output="$dir/.${name}.compressing.mp4"
+    else
+        output="$dir/${name}_compressed.mp4"
+    fi
+
+    local orig_size
+    orig_size=$(stat -c%s -- "$input")
+    if (( orig_size <= TARGET_BYTES )); then
+        notify "Compress Video" "$base is already ≤19.5MB, skipping."
+        return
+    fi
+
+    local duration
+    duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -- "$input")
+    if [[ -z "$duration" || "$duration" == "N/A" ]]; then
+        notify "Compress Video failed" "Could not read duration: $base"
+        return
+    fi
+
+    local has_audio
+    has_audio=$(ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 -- "$input" | head -1)
+
+    local audio_kbps=0
+    [[ -n "$has_audio" ]] && audio_kbps=$AUDIO_KBPS_DEFAULT
+
+    local total_kbps video_kbps
+    total_kbps=$(awk -v b="$SAFETY_BYTES" -v d="$duration" 'BEGIN{printf "%.0f", (b*8/1000)/d}')
+    video_kbps=$(( total_kbps - audio_kbps ))
+
+    if (( video_kbps < MIN_VIDEO_KBPS )) && [[ -n "$has_audio" ]]; then
+        audio_kbps=$MIN_AUDIO_KBPS
+        video_kbps=$(( total_kbps - audio_kbps ))
+    fi
+
+    if (( video_kbps < MIN_VIDEO_KBPS )); then
+        notify "Compress Video failed" "$base is too long to fit 19.5MB at watchable quality."
+        return
+    fi
+
+    notify "Compress Video" "Compressing $base (~${video_kbps}kbps video)…"
+
+    local passlog log
+    passlog=$(mktemp -u "${TMPDIR:-/tmp}/compress-video-pass-XXXXXX")
+    log=$(mktemp "${TMPDIR:-/tmp}/compress-video-log-XXXXXX")
+
+    local audio_args2=(-an)
+    [[ -n "$has_audio" ]] && audio_args2=(-c:a aac -b:a "${audio_kbps}k")
+
+    {
+        ffmpeg -y -i "$input" -c:v libx264 -b:v "${video_kbps}k" -pass 1 -passlogfile "$passlog" -an -f null /dev/null &&
+        ffmpeg -y -i "$input" -c:v libx264 -b:v "${video_kbps}k" -pass 2 -passlogfile "$passlog" "${audio_args2[@]}" -movflags +faststart "$output"
+    } >"$log" 2>&1
+    local status=$?
+    rm -f "${passlog}"*
+
+    if [[ $status -ne 0 || ! -f "$output" ]]; then
+        notify "Compress Video failed" "ffmpeg error on $base: $(tail -n1 "$log")"
+        rm -f "$output"
+        return
+    fi
+    rm -f "$log"
+
+    if [[ "$IN_PLACE" == "true" ]]; then
+        mv -f -- "$output" "$input"
+        output="$input"
+    fi
+
+    local out_size out_mb
+    out_size=$(stat -c%s -- "$output")
+    out_mb=$(awk -v b="$out_size" 'BEGIN{printf "%.1f", b/1024/1024}')
+    if (( out_size > TARGET_BYTES )); then
+        notify "Compress Video" "$base compressed but result is ${out_mb}MB, slightly over target."
+    else
+        notify "Compress Video done" "$(basename -- "$output") — ${out_mb}MB"
+    fi
+}
+
+if [[ $# -eq 0 ]]; then
+    notify "Compress Video" "No file given."
+    exit 0
+fi
+
+if [[ "$WAIT" == "true" ]]; then
+    for f in "$@"; do
+        process_one "$f"
+    done
+else
+    (
+        for f in "$@"; do
+            process_one "$f"
+        done
+    ) &
+    disown
+fi
+exit 0

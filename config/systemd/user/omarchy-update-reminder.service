@@ -1,0 +1,7 @@
+[Unit]
+Description=Weekly Omarchy update reminder
+
+[Service]
+Type=oneshot
+# Skip the first occurrence (2026-08-23) — system was just installed.
+ExecStart=/bin/bash -c '[[ "$(date +%%Y-%%m-%%d)" == "2026-08-23" ]] && exit 0; omarchy-notification-send -g 󰢌 "Update Omarchy" "Weekly check-in: run omarchy update"'

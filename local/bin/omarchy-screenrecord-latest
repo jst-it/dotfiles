@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Prints the path of the most recently saved screen recording, compressing it
+# in place first (blocking) if it's over the 19.5MB Discord limit. Shared by
+# omarchy-screenrecord-open-last and omarchy-screenrecord-copy-last so both
+# act on the same, correctly-sized file whether or not a compress was needed.
+set -uo pipefail
+
+[[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
+WATCH_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
+TARGET_BYTES=$((19*1024*1024 + 1024*1024/2))   # 19.5 MiB
+
+latest=$(ls -1t "$WATCH_DIR"/screenrecording-*.mp4 2>/dev/null | head -n1)
+[[ -n "$latest" ]] || exit 1
+
+size=$(stat -c%s -- "$latest" 2>/dev/null) || exit 1
+if (( size > TARGET_BYTES )); then
+    "$HOME/.local/bin/compress-video-19.5mb" --wait --in-place "$latest"
+fi
+
+echo "$latest"

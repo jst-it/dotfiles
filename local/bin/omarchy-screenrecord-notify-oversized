@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Watches the Omarchy screen-recording output directory. When a finished
+# recording (screenrecording-*.mp4) lands over 19.5MB, posts a notification
+# offering to compress it — clicking it runs compress-video-19.5mb --in-place.
+#
+# Only reacts to the recorder's own finalize step (the rename of
+# "*-processed.mp4" back onto the original name — see
+# finalize_recording() in omarchy-capture-screenrecording), so it never fires
+# on a not-yet-finished recording or on unrelated videos.
+set -uo pipefail
+
+[[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
+WATCH_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
+TARGET_BYTES=$((19*1024*1024 + 1024*1024/2))   # 19.5 MiB
+COMPRESS_BIN="$HOME/.local/bin/compress-video-19.5mb"
+
+[[ -d "$WATCH_DIR" ]] || { echo "Watch dir does not exist: $WATCH_DIR" >&2; exit 1; }
+
+inotifywait -m -q -e moved_to --format '%f' "$WATCH_DIR" | while read -r name; do
+    case "$name" in
+    screenrecording-*.mp4) ;;
+    *) continue ;;
+    esac
+    case "$name" in
+    *-processed.mp4) continue ;;
+    esac
+
+    path="$WATCH_DIR/$name"
+    [[ -f "$path" ]] || continue
+
+    size=$(stat -c%s -- "$path" 2>/dev/null) || continue
+    (( size > TARGET_BYTES )) || continue
+
+    mb=$(awk -v b="$size" 'BEGIN{printf "%.1f", b/1024/1024}')
+    omarchy-notification-send \
+        --app-name "Screen Recording" \
+        --exec "$(printf '%q --in-place %q' "$COMPRESS_BIN" "$path")" \
+        "Recording is ${mb}MB" \
+        "Click to compress $name to ≤19.5MB"
+done

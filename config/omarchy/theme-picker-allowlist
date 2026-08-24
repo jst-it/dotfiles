@@ -1,0 +1,13 @@
+# Stock/default Omarchy themes (from /usr/share/omarchy/themes) that
+# should appear in the theme picker. One slug per line, matching the
+# directory name. Lines starting with # are ignored.
+#
+# Everything under ~/.config/omarchy/themes always shows regardless of
+# this file, so custom/installed themes never need to be added here.
+gruvbox
+hackerman
+lumon
+retro-82
+solitude
+vantablack
+white
