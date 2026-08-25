@@ -74,9 +74,6 @@ o.bind("SUPER + BRACKETLEFT", "Rotate windows reverse", "omarchy-rotate-windows 
 hl.unbind("SUPER + K")
 o.bind("SUPER + K", "Keybindings", "omarchy-menu-keybindings-relabeled")
 
--- Proton VPN: toggle connect/disconnect (fastest server)
-o.bind("SUPER + SHIFT + V", "Toggle Proton VPN", "omarchy-protonvpn-toggle")
-
 -- Chromium profiles
 -- SUPER + SHIFT + RETURN is the default Omarchy "Browser" binding; override it
 -- with a wrapper (~/.local/bin/omarchy-launch-browser-personal) that opens the
@@ -87,8 +84,17 @@ hl.unbind("SUPER + SHIFT + RETURN")
 o.bind("SUPER + SHIFT + RETURN", "Chromium (Personal)", "omarchy-launch-browser-personal")
 o.bind("SUPER + SHIFT + U", "Chromium (School)", { launch = "chromium --profile-directory='Profile 2' --class=Chromium-School" })
 
--- Discord
-o.bind("SUPER + D", "Discord", { launch = "omarchy-launch-webapp https://discord.com/channels/@me" })
+-- Discord and X: --profile-directory=Default matches the workspace-4 login
+-- layout (~/.local/bin/ws4-social-layout, see hypr/autostart.lua) -- without
+-- it, a manual launch while the other webapp is already running gets
+-- forwarded into its chromium process under whatever profile was last
+-- active, producing a window class that no longer matches the "^...-Default$"
+-- rules in hyprland.lua. X overrides Omarchy's default `{ webapp = ... }`
+-- bind (hypr/default/bindings/applications.lua) since that shorthand doesn't
+-- support passing extra chromium args.
+hl.unbind("SUPER + SHIFT + X")
+o.bind("SUPER + D", "Discord", { launch = "omarchy-launch-webapp https://discord.com/channels/@me --profile-directory=Default" })
+o.bind("SUPER + SHIFT + X", "X", { launch = "omarchy-launch-webapp https://x.com/ --profile-directory=Default" })
 
 -- Slack (capstone project) -- SUPER+S/SHIFT+S/ALT+S/CTRL+S are all already
 -- taken by defaults (scratchpad, Google Maps, move-to-scratchpad, Share).

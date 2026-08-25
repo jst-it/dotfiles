@@ -44,7 +44,8 @@
           "id": "omarchy.tray"
         },
         {
-          "id": "mrrobot.protonvpn"
+          "id": "jkoestinger.vpn",
+          "hiddenBackends": ""
         },
         {
           "id": "io.github.thisisgm.omapods",
