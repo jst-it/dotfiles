@@ -82,6 +82,7 @@ bin_scripts=(
   omarchy-theme-switcher-curated
   system-backup.sh
   system-restore.sh
+  video-to-1080
   ws5-music-layout
 )
 for f in "${bin_scripts[@]}"; do

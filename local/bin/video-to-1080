@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+# Downscale one or more videos to 1080p, preserving aspect ratio.
+#
+# Usage: video-to-1080 [--in-place] [--recursive] [--cpu] <file|dir> [more...]
+#
+# Default: writes "<name>_1080p.mp4" next to each input, original untouched.
+# --in-place:  replace the original once the new file is ready.
+# --recursive: descend into subdirectories (directories are top-level only otherwise).
+# --cpu:       force libx264 instead of trying NVENC first.
+#
+# Videos whose smaller dimension is already <=1080 are skipped, so this is safe
+# to point at a whole folder repeatedly.
+#
+# Unlike its sibling compress-video-19.5mb, this runs in the FOREGROUND: it is
+# meant to be typed in a terminal. Nautilus launches it via Gio.Subprocess,
+# which is already async, so nothing needs backgrounding there.
+set -uo pipefail
+
+TARGET_HEIGHT=1080
+X264_CRF=22
+X264_PRESET=medium
+NVENC_CQ=28
+NVENC_PRESET=p5
+AUDIO_KBPS=192
+
+VIDEO_EXTENSIONS=(mp4 mov m4v mkv webm avi wmv flv mpg mpeg ts m2ts)
+
+IN_PLACE="false"
+RECURSIVE="false"
+FORCE_CPU="false"
+while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+    --in-place) IN_PLACE="true"; shift ;;
+    --recursive|-r) RECURSIVE="true"; shift ;;
+    --cpu) FORCE_CPU="true"; shift ;;
+    --help|-h) sed -n "2,16p" "$0" | sed 's/^# \?//'; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; exit 2 ;;
+    esac
+done
+
+# Only nag the desktop when there's no terminal to print to (i.e. from Nautilus).
+notify() {
+    [[ -t 1 ]] && return 0
+    omarchy-notification-send --app-name "Video to 1080p" "$1" "${2:-}" 2>/dev/null \
+        || notify-send -a "Video to 1080p" "$1" "${2:-}" 2>/dev/null || true
+}
+
+say() { echo "$*"; }
+
+converted=0
+skipped=0
+failed=0
+
+process_one() {
+    local input="$1"
+    [[ -f "$input" ]] || { say "not a file: $input"; ((failed++)); return; }
+
+    local base; base=$(basename -- "$input")
+
+    # One value per line rather than a delimited pair: ffprobe's csv writer
+    # appends a trailing separator on some files (HDR mastering-display side
+    # data does it), which turned "3840x2160" into "3840x2160x" and made the
+    # height unparseable.
+    local w h
+    { read -r w; read -r h; } < <(ffprobe -v error -select_streams v:0 \
+        -show_entries stream=width,height -of default=noprint_wrappers=1:nokey=1 \
+        -- "$input" 2>/dev/null)
+    w="${w//[^0-9]/}"; h="${h//[^0-9]/}"
+    if [[ -z "$w" || -z "$h" ]]; then
+        say "not a video: $base"; ((failed++)); return
+    fi
+
+    # "1080p" means the short side is 1080 — that way portrait clips scale by
+    # width instead of being crushed to 608x1080.
+    local short=$(( w < h ? w : h ))
+    if (( short <= TARGET_HEIGHT )); then
+        say "skip (already ${w}x${h}): $base"; ((skipped++)); return
+    fi
+
+    local dir name output
+    dir=$(dirname -- "$input")
+    name="${base%.*}"
+    if [[ "$IN_PLACE" == "true" ]]; then
+        output="$dir/.${name}.scaling.mp4"
+    else
+        output="$dir/${name}_1080p.mp4"
+        if [[ -e "$output" ]]; then
+            say "skip (output exists): $(basename -- "$output")"; ((skipped++)); return
+        fi
+    fi
+
+    # Landscape -> height 1080; portrait -> width 1080. -2 keeps the other side
+    # even, which every H.264 encoder requires.
+    local scale="scale='if(gt(iw,ih),-2,${TARGET_HEIGHT})':'if(gt(iw,ih),${TARGET_HEIGHT},-2)'"
+
+    # HDR sources otherwise come out as 10-bit H.264 (High 10), which Chrome,
+    # most TVs and phones refuse to decode. Tonemap those down to 8-bit bt709.
+    # SDR sources are left exactly as they were.
+    local transfer primaries vf="$scale"
+    transfer=$(ffprobe -v error -select_streams v:0 -show_entries stream=color_transfer \
+        -of default=nw=1:nk=1 -- "$input" 2>/dev/null | head -1)
+    primaries=$(ffprobe -v error -select_streams v:0 -show_entries stream=color_primaries \
+        -of default=nw=1:nk=1 -- "$input" 2>/dev/null | head -1)
+    if [[ "$transfer" == "smpte2084" || "$transfer" == "arib-std-b67" || "$primaries" == "bt2020" ]]; then
+        say "  HDR source ($transfer/$primaries) — tonemapping to 8-bit SDR"
+        vf="zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p,${scale}"
+    fi
+
+    # Re-muxing into mp4 only tolerates some audio codecs; copy when we can.
+    local acodec audio_args
+    acodec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 -- "$input" 2>/dev/null | head -1)
+    if [[ -z "$acodec" ]]; then
+        audio_args=(-an)
+    elif [[ "$acodec" == "aac" || "$acodec" == "mp3" ]]; then
+        audio_args=(-c:a copy)
+    else
+        audio_args=(-c:a aac -b:a "${AUDIO_KBPS}k")
+    fi
+
+    local log; log=$(mktemp "${TMPDIR:-/tmp}/video-to-1080-XXXXXX.log")
+
+    say "converting ${w}x${h} -> 1080p: $base"
+    notify "Video to 1080p" "Converting $base…"
+
+    local status=1
+    if [[ "$FORCE_CPU" != "true" ]]; then
+        ffmpeg -nostdin -y -i "$input" -vf "$vf" \
+            -c:v h264_nvenc -preset "$NVENC_PRESET" -rc vbr -cq "$NVENC_CQ" -b:v 0 \
+            "${audio_args[@]}" -movflags +faststart -- "$output" >"$log" 2>&1
+        status=$?
+        # Hybrid NVIDIA/AMD boxes can advertise NVENC and still fail to open it.
+        (( status != 0 )) && say "  NVENC unavailable, falling back to libx264"
+    fi
+
+    if (( status != 0 )); then
+        ffmpeg -nostdin -y -i "$input" -vf "$vf" \
+            -c:v libx264 -crf "$X264_CRF" -preset "$X264_PRESET" \
+            "${audio_args[@]}" -movflags +faststart -- "$output" >"$log" 2>&1
+        status=$?
+    fi
+
+    if (( status != 0 )) || [[ ! -s "$output" ]]; then
+        # Keep the log: deleting it on failure is what made the last bug
+        # impossible to diagnose after the fact.
+        say "  FAILED: $(tail -n1 "$log")"
+        say "  ffmpeg log kept at $log"
+        notify "Video to 1080p failed" "$base — see $log"
+        rm -f -- "$output"
+        ((failed++)); return
+    fi
+    rm -f "$log"
+
+    if [[ "$IN_PLACE" == "true" ]]; then
+        mv -f -- "$output" "$input"
+        output="$input"
+    fi
+
+    local out_mb; out_mb=$(awk -v b="$(stat -c%s -- "$output")" 'BEGIN{printf "%.1f", b/1024/1024}')
+    say "  done: $(basename -- "$output") — ${out_mb}MB"
+    ((converted++))
+}
+
+collect_from_dir() {
+    local dir="$1" depth=(-maxdepth 1)
+    [[ "$RECURSIVE" == "true" ]] && depth=()
+
+    local expr=()
+    for ext in "${VIDEO_EXTENSIONS[@]}"; do
+        expr+=(-iname "*.${ext}" -o)
+    done
+    unset 'expr[${#expr[@]}-1]'
+
+    # Our own outputs are videos too — don't feed them back in on a re-run.
+    find "$dir" "${depth[@]}" -type f \( "${expr[@]}" \) ! -name '*_1080p.mp4' -print0 |
+        sort -z
+}
+
+if [[ $# -eq 0 ]]; then
+    echo "Usage: video-to-1080 [--in-place] [--recursive] [--cpu] <file|dir> [more...]" >&2
+    exit 2
+fi
+
+for target in "$@"; do
+    if [[ -d "$target" ]]; then
+        while IFS= read -r -d '' f; do
+            process_one "$f"
+        done < <(collect_from_dir "$target")
+    else
+        process_one "$target"
+    fi
+done
+
+summary="converted $converted, skipped $skipped, failed $failed"
+say "$summary"
+if (( failed > 0 )); then
+    notify "Video to 1080p finished with errors" "$summary"
+    exit 1
+fi
+notify "Video to 1080p done" "$summary"
+exit 0
