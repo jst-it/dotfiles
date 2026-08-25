@@ -1,0 +1,11 @@
+[Unit]
+Description=Sync ~/Documents/School with Proton Drive (rclone bisync)
+Documentation=https://rclone.org/bisync/
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/protondrive-sync
+# The script flocks itself, so overlapping triggers are cheap no-ops.
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=idle

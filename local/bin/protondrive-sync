@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Bidirectional sync of ~/Documents <-> Proton Drive via rclone bisync.
+# Triggered by protondrive-watch.service (inotify) and protondrive-sync.timer (safety net).
+set -uo pipefail
+
+LOCAL="${PROTONDRIVE_LOCAL:-$HOME/Documents/School}"
+REMOTE="${PROTONDRIVE_REMOTE:-protondrive:Documents/School}"
+FILTER="$HOME/.config/rclone/protondrive-filter.txt"
+STATE="$HOME/.local/state/protondrive-sync"
+LOG="$STATE/sync.log"
+LOCK="$STATE/sync.lock"
+MARKER="$STATE/initialized"
+DIRTY="$STATE/dirty"
+
+mkdir -p "$STATE"
+
+# Only one sync at a time; a run already in flight will pick up newer changes
+# via the dirty flag below, so a skipped trigger loses nothing.
+exec 9>"$LOCK"
+flock -n 9 || { echo "$(date -Is) skip: sync already running" >>"$LOG"; exit 0; }
+
+# Don't churn the API (or fight a half-mounted home) if the folder is missing.
+[[ -d "$LOCAL" ]] || { echo "$(date -Is) abort: $LOCAL missing" >>"$LOG"; exit 1; }
+
+run_bisync() {
+  local args=(
+    bisync "$LOCAL" "$REMOTE"
+    --filter-from "$FILTER"
+    --conflict-resolve newer
+    --conflict-loser num
+    --create-empty-src-dirs
+    --resilient --recover
+    --max-lock 2m
+    --protondrive-replace-existing-draft=true
+    --log-file "$LOG" --log-level INFO
+  )
+  if [[ ! -f "$MARKER" ]]; then
+    echo "$(date -Is) first run: --resync (establishing baseline)" >>"$LOG"
+    args+=(--resync)
+  fi
+  rclone "${args[@]}"
+}
+
+# Files changed *during* a run would otherwise wait for the hourly timer:
+# systemd collapses a start request for an already-running oneshot unit.
+# The watcher sets $DIRTY on every event, so re-run while it keeps reappearing.
+rc=0
+for _ in 1 2 3; do
+  rm -f "$DIRTY"
+  if run_bisync; then
+    rc=0
+    touch "$MARKER"
+  else
+    rc=$?
+    break
+  fi
+  [[ -e "$DIRTY" ]] || break
+  echo "$(date -Is) changes arrived mid-sync, re-running" >>"$LOG"
+done
+
+if (( rc != 0 )); then
+  echo "$(date -Is) bisync failed (exit $rc)" >>"$LOG"
+  notify-send -u critical "Proton Drive sync failed" \
+    "exit $rc — see ~/.local/state/protondrive-sync/sync.log" 2>/dev/null
+fi
+exit "$rc"

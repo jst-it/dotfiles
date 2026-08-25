@@ -1,0 +1,13 @@
+[Unit]
+Description=Watch ~/Documents/School and trigger Proton Drive sync
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/protondrive-watch
+Restart=always
+RestartSec=10s
+Nice=10
+
+[Install]
+WantedBy=default.target

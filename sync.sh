@@ -50,8 +50,13 @@ mirror ".config/foot/foot.ini" "config/foot/foot.ini"
 mirror ".config/cliamp/config.toml" "config/cliamp/config.toml"
 mirror ".config/cliamp/playlists/" "config/cliamp/playlists/"
 
+# rclone: the sync filter only. NEVER mirror the rclone directory - rclone.conf
+# holds the Proton Drive account credentials and must not enter this repo.
+mirror ".config/rclone/protondrive-filter.txt" "config/rclone/protondrive-filter.txt"
+
 mkdir -p "$REPO/config/systemd/user"
-for f in "$HOME"/.config/systemd/user/omarchy-*; do
+for f in "$HOME"/.config/systemd/user/omarchy-* \
+         "$HOME"/.config/systemd/user/protondrive-*; do
   [[ -e "$f" ]] || continue
   cp "$f" "$REPO/config/systemd/user/$(basename "$f")"
 done
@@ -81,6 +86,8 @@ bin_scripts=(
   omarchy-screenrecord-organize
   omarchy-screenshot-organize
   omarchy-theme-switcher-curated
+  protondrive-sync
+  protondrive-watch
   system-backup.sh
   system-restore.sh
   video-to-1080
