@@ -79,6 +79,7 @@ bin_scripts=(
   omarchy-screenrecord-notify-oversized
   omarchy-screenrecord-open-last
   omarchy-screenrecord-organize
+  omarchy-screenshot-organize
   omarchy-theme-switcher-curated
   system-backup.sh
   system-restore.sh

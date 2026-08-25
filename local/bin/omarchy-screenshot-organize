@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Files each screenshot from a previous day into
+# "Pictures/Screenshots/<date>/", based on the date encoded in its filename
+# (screenshot-YYYY-MM-DD_...). Screenshots from today are left in place so
+# the day's captures stay to hand in the Pictures root; only once a file's
+# date is in the past does it get filed away. Matches on the "screenshot-"
+# prefix generally, so edited/annotated derivatives (which keep that prefix)
+# land in the same dated folder as their original.
+#
+# Once a dated folder's month is also in the past, it gets nested one level
+# deeper into "Pictures/Screenshots/<Month>_<Year>/<date>/". Current-month
+# dated folders are left at the top level until their month ends.
+#
+# Runs once per login (see the matching systemd user service), but is safe
+# to re-run any time - it just skips today's files, the current month's
+# folders, and anything already organized.
+#
+# Mirrors omarchy-screenrecord-organize; keep the two in step.
+set -uo pipefail
+
+[[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
+WATCH_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
+ORGANIZED_ROOT="$WATCH_DIR/Screenshots"
+TODAY=$(date +%Y-%m-%d)
+
+[[ -d "$WATCH_DIR" ]] || exit 0
+
+shopt -s nullglob
+for path in "$WATCH_DIR"/screenshot-*; do
+    [[ -f "$path" ]] || continue
+    name=$(basename -- "$path")
+    [[ "$name" =~ ^screenshot-([0-9]{4}-[0-9]{2}-[0-9]{2}) ]] || continue
+    date="${BASH_REMATCH[1]}"
+    [[ "$date" == "$TODAY" ]] && continue
+
+    dest_dir="$ORGANIZED_ROOT/$date"
+    mkdir -p -- "$dest_dir"
+    mv -n -- "$path" "$dest_dir/$name"
+done
+
+CURRENT_MONTH=$(date +%B_%Y)
+for day_dir in "$ORGANIZED_ROOT"/*/; do
+    day_dir="${day_dir%/}"
+    day_name=$(basename -- "$day_dir")
+
+    # Only bare YYYY-MM-DD dirs at the top level; a folder already nested
+    # under a Month_Year dir doesn't match this glob, so it's never revisited.
+    [[ "$day_name" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || continue
+
+    folder_month=$(date -d "$day_name" +%B_%Y)
+    [[ "$folder_month" == "$CURRENT_MONTH" ]] && continue
+
+    dest_dir="$ORGANIZED_ROOT/$folder_month"
+    mkdir -p -- "$dest_dir"
+    mv -n -- "$day_dir" "$dest_dir/$day_name"
+done
