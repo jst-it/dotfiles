@@ -134,6 +134,50 @@ o.bind("SUPER + SHIFT + PAGE_DOWN", "Reset window gaps to default", "omarchy-gap
 -- Toggle window borders on/off. See ~/.local/bin/omarchy-borders-toggle.
 o.bind("SUPER + F11", "Toggle window borders", "omarchy-borders-toggle")
 
+-- AirPods call mode: stop LibrePods and force the HFP mic profile, or
+-- restore A2DP and restart LibrePods. See
+-- ~/.local/bin/omarchy-airpods-call-mode.
+o.bind("SUPER + CTRL + M", "Toggle AirPods call mode", "omarchy-airpods-call-mode")
+
+-- Proton VPN on/off (~/.local/bin/omarchy-protonvpn-toggle). The script was
+-- already here but never bound. SUPER+CTRL is the system-toggle tier, which
+-- puts it next to the other connectivity/state toggles (nightlight on
+-- SUPER+CTRL+N, idle lock on SUPER+CTRL+I). G for "guard" - V, P and N are
+-- all taken at this tier.
+o.bind("SUPER + CTRL + G", "Toggle Proton VPN", "omarchy-protonvpn-toggle")
+
+-- Force a Proton Drive sync of ~/Documents/School right now. Normally driven
+-- by protondrive-watch.service (inotify) plus protondrive-sync.timer, so this
+-- is only the "I need this on the other machine in the next ten seconds"
+-- escape hatch. Goes through systemd rather than calling ~/.local/bin/
+-- protondrive-sync directly so it inherits the unit's Nice/IOSchedulingClass;
+-- the script's own flock makes a press during an in-flight sync a cheap no-op
+-- rather than a second rclone run.
+o.bind("SUPER + CTRL + U", "Sync Proton Drive now", "systemctl --user start protondrive-sync.service")
+
+-- Claude Code in a terminal. SUPER+SHIFT+C is free because the Hey Calendar
+-- bind was unbound at the top of this file. omarchy-launch-terminal (not a
+-- bare `foot -e`) so it opens in the active terminal's cwd and goes through
+-- uwsm-app like every other launched app.
+o.bind("SUPER + SHIFT + C", "Claude Code", "omarchy-launch-terminal claude")
+
+-- btop.
+o.bind("SUPER + SHIFT + I", "System monitor (btop)", "omarchy-launch-terminal btop")
+
+-- Zoom. Must carry QT_SCALE_FACTOR=1.5 to match the override in
+-- ~/.local/share/applications/Zoom.desktop - the packaged
+-- /usr/share/applications/Zoom.desktop has no scale factor, so launching
+-- `zoom` bare renders the UI at roughly half size on this display.
+o.bind("SUPER + SHIFT + Z", "Zoom", { launch = "env QT_SCALE_FACTOR=1.5 zoom" })
+
+-- Downscale the most recent screen recording to 1080p. See
+-- ~/.local/bin/omarchy-screenrecord-to-1080 - it resolves the newest
+-- recording itself instead of reusing omarchy-screenrecord-latest, which
+-- would compress the file to 19.5MB first and stack a second lossy pass on
+-- top of the downscale. video-to-1080 is foreground/blocking, hence the
+-- terminal.
+o.bind("SUPER + SHIFT + V", "Last recording -> 1080p", "omarchy-launch-terminal omarchy-screenrecord-to-1080")
+
 -- Logitech MX Keys examples:
 -- o.bind("SUPER + SHIFT + S", nil, "omarchy-capture-screenshot")
 -- o.bind("SUPER + H", nil, "voxtype record toggle")

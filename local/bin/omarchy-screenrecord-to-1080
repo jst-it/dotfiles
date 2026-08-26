@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Downscale the most recent screen recording to 1080p via video-to-1080.
+#
+# Deliberately does NOT reuse omarchy-screenrecord-latest: that helper
+# transparently compresses anything over 19.5MB *before* printing the path,
+# which would mean encoding the file twice (compress -> downscale) and
+# stacking two lossy passes. This resolves the same path with the same
+# WATCH_DIR logic, minus the compression side effect.
+#
+# video-to-1080 runs in the foreground, so this is meant to be launched into a
+# terminal (see the SUPER+SHIFT+V bind in ~/.config/hypr/bindings.lua).
+set -uo pipefail
+
+[[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
+WATCH_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
+
+latest=$(ls -1t "$WATCH_DIR"/screenrecording-*.mp4 2>/dev/null | head -n1)
+if [[ -z "$latest" ]]; then
+    notify-send "Screen recording" "No recording found in $WATCH_DIR"
+    echo "No recording found in $WATCH_DIR" >&2
+    read -rn1 -p "Press any key to close..."
+    exit 1
+fi
+
+echo "Downscaling: $latest"
+echo
+video-to-1080 "$latest"
+status=$?
+
+if (( status == 0 )); then
+    notify-send "Screen recording" "1080p version ready:\n$(basename "${latest%.mp4}_1080p.mp4")"
+else
+    notify-send "Screen recording" "video-to-1080 failed (exit $status)"
+fi
+
+echo
+read -rn1 -p "Press any key to close..."
+exit $status

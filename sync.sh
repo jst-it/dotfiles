@@ -84,11 +84,16 @@ bin_scripts=(
   omarchy-screenrecord-notify-oversized
   omarchy-screenrecord-open-last
   omarchy-screenrecord-organize
+  omarchy-screenrecord-to-1080
   omarchy-screenshot-organize
   omarchy-theme-switcher-curated
   protondrive-sync
   protondrive-watch
-  system-backup.sh
+  # system-backup.sh moved to /usr/local/sbin/omarchy-system-backup on
+  # 2026-08-26: omarchy-backup.service runs it as root, and a root-executed
+  # script must not sit in a user-writable directory. It is outside this
+  # repo's $HOME-mirroring model now, along with its wrapper
+  # /usr/local/sbin/omarchy-backup-run and /usr/local/bin/omarchy-backup-catchup.
   system-restore.sh
   video-to-1080
   ws5-music-layout
