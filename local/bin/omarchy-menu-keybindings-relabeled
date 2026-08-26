@@ -1,59 +1,178 @@
 #!/bin/bash
 
-# Relabels numpad key symbols in the SUPER+K keybindings menu (e.g.
-# "KP_END" -> "NUM1") without forking the 597-line package-owned
-# omarchy-menu-keybindings.
+# Wrapper around the package-owned omarchy-menu-keybindings (SUPER+K) that
+# does three things the real script cannot be asked to do without forking its
+# ~600 lines:
 #
+#   1. Relabels numpad keysyms for display ("KP_END" -> "NUM1").
+#   2. Regroups the list by category and prefixes each row with a glyph, so
+#      apps, window commands and system toggles no longer interleave.
+#   3. Re-pads the key column after relabeling, which the old version of this
+#      wrapper got wrong - it rewrote KP_END -> NUM1 *after* the real script
+#      had already padded the field to 35 columns, so every numpad row came
+#      out short and the arrows did not line up.
+#
+# How the interception works
+# --------------------------
 # omarchy-menu-keybindings calls `omarchy-menu-select` as a bare command to
-# show the picker and read back the chosen line, then looks up that exact
-# text against its own cached records to find what to dispatch. We shadow
-# that one command with an exported bash function: relabel the choices on
-# the way in (forward_relabel), then relabel the selected line back to the
-# original keysym on the way out (reverse_relabel) so the lookup in the real
-# script still matches its cache. `command` inside the function bypasses the
-# shadow to reach the real binary, avoiding recursion.
+# show the picker, then looks the chosen line up against its own cached
+# records to decide what to dispatch. We shadow that one command with an
+# exported bash function. `command` inside the function bypasses the shadow to
+# reach the real binary, avoiding recursion.
+#
+# Because we rewrite the text of every row, the line the menu hands back no
+# longer matches the real script's records. So omk_transform also writes a
+# "rewritten <TAB> original" map to $OMK_MAP, and omk_resolve turns the
+# selection back into the original line before the real script sees it. That
+# is strictly more robust than the old reverse-sed approach, which only worked
+# because it left the padding untouched.
+#
+# Row format: omarchy-menu-select accepts "<glyph><TAB><label>" and documents
+# that the glyph is rendered but never returned with the selection (see
+# Menu.qml:530 in the cloned mrrobot.menu plugin). So the glyphs are free -
+# they cannot affect dispatch.
 #
 # The keysym side is always the Num-Lock-OFF variant (KP_END, KP_DOWN, ...)
-# because that's the first bracketed symbol in the compiled XKB keymap,
-# which is what the real script's static resolution always reads -
-# independent of live Num Lock state.
+# because that is the first bracketed symbol in the compiled XKB keymap, which
+# is what the real script's static resolution reads - independent of live Num
+# Lock state.
+#
+# Categories are matched against the description (the text after the arrow) by
+# the first rule that hits, in the order listed in omk_transform. Anything
+# unmatched falls into "Other" and keeps the real script's own ordering, so
+# bindings added by a future Omarchy update still show up - just ungrouped.
 
-forward_relabel() {
-  sed -E \
-    -e 's/\bKP_END\b/NUM1/g' \
-    -e 's/\bKP_DOWN\b/NUM2/g' \
-    -e 's/\bKP_NEXT\b/NUM3/g' \
-    -e 's/\bKP_LEFT\b/NUM4/g' \
-    -e 's/\bKP_BEGIN\b/NUM5/g' \
-    -e 's/\bKP_RIGHT\b/NUM6/g' \
-    -e 's/\bKP_HOME\b/NUM7/g' \
-    -e 's/\bKP_UP\b/NUM8/g' \
-    -e 's/\bKP_PRIOR\b/NUM9/g' \
-    -e 's/\bKP_INSERT\b/NUM0/g'
+omk_transform() {
+  LC_ALL=C gawk -v mapfile="$OMK_MAP" '
+    function addrule(rank, glyph, re,    i) {
+      i = ++nrules; rule_rank[i] = rank; rule_glyph[i] = glyph; rule_re[i] = re
+    }
+
+    BEGIN {
+      # Literal nerd-font glyphs (JetBrainsMono Nerd Font, coverage verified).
+      # gawk has no \U escape, and system() is a reserved awk function name.
+      essentials = "󰲝"; tools = "󰆍"; apps = "󰀻"
+      windows = "󰖯"; spaces = "󰕰"; capture = "󰄀"
+      sysgroup = "󰒓"; notify = "󰂚"; media = "󰌌"
+      other = "󰇙"
+
+      # 1 - Essentials: the menus and the big red buttons.
+      addrule(1, essentials, "^(Keybindings|Omarchy menu|Apps menu|System menu|Theme menu|Hardware menu|Capture menu|Toggle menu|Power|Lock system|Close all windows|Agent)$")
+
+      # 2 - Terminal and TUI tools.
+      addrule(2, tools, "^(Terminal|Tmux|Herdr|Claude Code|Docker|Editor|Calculator|Transcode|Omawrite|Music TUI)$")
+      addrule(2, tools, "^(Tmux|Herdr) keybindings$")
+      addrule(2, tools, "^System monitor")
+
+      # 3 - Apps and webapps. Anchored so it does not swallow "Zoom in" or
+      # "Reset zoom", which are display commands and belong in System.
+      addrule(3, apps, "^(Chromium|Browser|File manager)")
+      addrule(3, apps, "^(Discord|Slack|Signal|WhatsApp|Obsidian|TickTick|Zoom|YouTube|Music|Passwords|ChatGPT|Grok|X|X Post|Calendar)$")
+      addrule(3, apps, "^Google ")
+      addrule(3, apps, "Web App$")
+
+      # 4 - Workspaces. Checked before Windows because several descriptions
+      # contain both words ("Move window to workspace 3").
+      addrule(4, spaces, "workspace")
+      addrule(4, spaces, "^Move workspace to ")
+
+      # 5 - Window management.
+      addrule(5, windows, "window")
+      addrule(5, windows, "^(Full screen|Full width|Tiled full screen|Pop window|Maximize|Swap|Focus on|Resize|Expand|Shrink|Rotate|Pseudo)")
+      addrule(5, windows, "(scratchpad|group|gaps|borders)")
+
+      # 6 - Capture and sharing.
+      addrule(6, capture, "(Screenshot|Screenrecording|recording|Color picker|OCR|webcam|Share|1080p)")
+
+      # 7 - Media and laptop function keys. Matched on the XF86 keysym
+      # rather than the description, since the descriptions are all over
+      # the place ("Mute", "Eject media", "Toggle touchpad").
+      # Handled separately below - see the xf86 test in the main block.
+
+      # 8 - Notifications.
+      addrule(8, notify, "notification")
+
+      # 9 - System, hardware and toggles.
+      addrule(9, sysgroup, "^(Audio|Bluetooth|Network|Display|Wifi|Battery|Show battery|Background|Activity|Bar panel|Toggle top bar|Set reminder|Show reminders|Clear reminders|Toggle weather|Show time|Universal|Clipboard|Emojis)")
+      addrule(9, sysgroup, "(nightlight|locking on idle|Monitor scaling|laptop display|AirPods|Proton Drive|zoom|Zoom in|mirroring)")
+
+      nrules_done = 1
+    }
+
+    {
+      arrow = index($0, "→")
+      if (arrow == 0) { key = $0; desc = "" }
+      else            { key = substr($0, 1, arrow - 1); desc = substr($0, arrow + 4) }
+
+      sub(/[ \t]+$/, "", key)
+
+      gsub(/KP_END/,    "NUM1", key); gsub(/KP_DOWN/,  "NUM2", key)
+      gsub(/KP_NEXT/,   "NUM3", key); gsub(/KP_LEFT/,  "NUM4", key)
+      gsub(/KP_BEGIN/,  "NUM5", key); gsub(/KP_RIGHT/, "NUM6", key)
+      gsub(/KP_HOME/,   "NUM7", key); gsub(/KP_UP/,    "NUM8", key)
+      gsub(/KP_PRIOR/,  "NUM9", key); gsub(/KP_INSERT/,"NUM0", key)
+
+      rewritten = (desc == "") ? key : sprintf("%-35s → %s", key, desc)
+
+      rank = 99; glyph = other
+      if (key ~ /XF86/ && desc !~ /^Calculator$/) { rank = 7; glyph = media }
+      else for (i = 1; i <= nrules; i++) {
+        if (desc ~ rule_re[i]) { rank = rule_rank[i]; glyph = rule_glyph[i]; break }
+      }
+
+      if (mapfile != "") printf "%s\t%s\n", rewritten, $0 >> mapfile
+
+      # Buffer rather than print, so END can renumber the numpad block. The
+      # real script sorted those rows by their KP_* keysym names, which is
+      # alphabetical noise once they read as NUM1..NUM0.
+      n++; out_rank[n] = rank; out_seq[n] = NR
+      out_glyph[n] = glyph; out_disp[n] = rewritten
+
+      if (match(rewritten, /NUM([0-9])/, digit_match)) {
+        numpad[n] = digit_match[1]
+        if (numpad_base == 0 || NR < numpad_base) numpad_base = NR
+      }
+    }
+
+    END {
+      for (i = 1; i <= n; i++) {
+        if (i in numpad) out_seq[i] = numpad_base + numpad[i]
+        printf "%d\t%06d\t%s\t%s\n", out_rank[i], out_seq[i], out_glyph[i], out_disp[i]
+      }
+    }
+  ' | sort -t$'\t' -k1,1n -k2,2n | cut -f3-
 }
 
-reverse_relabel() {
-  sed -E \
-    -e 's/\bNUM1\b/KP_END/g' \
-    -e 's/\bNUM2\b/KP_DOWN/g' \
-    -e 's/\bNUM3\b/KP_NEXT/g' \
-    -e 's/\bNUM4\b/KP_LEFT/g' \
-    -e 's/\bNUM5\b/KP_BEGIN/g' \
-    -e 's/\bNUM6\b/KP_RIGHT/g' \
-    -e 's/\bNUM7\b/KP_HOME/g' \
-    -e 's/\bNUM8\b/KP_UP/g' \
-    -e 's/\bNUM9\b/KP_PRIOR/g' \
-    -e 's/\bNUM0\b/KP_INSERT/g'
+omk_resolve() {
+  LC_ALL=C gawk -v mapfile="$OMK_MAP" '
+    BEGIN {
+      while ((getline line < mapfile) > 0) {
+        sep = index(line, "\t")
+        if (sep) original[substr(line, 1, sep - 1)] = substr(line, sep + 1)
+      }
+    }
+    { print ($0 in original) ? original[$0] : $0 }
+  '
 }
 
 omarchy-menu-select() {
-  forward_relabel | command omarchy-menu-select "$@" | reverse_relabel
+  omk_transform | command omarchy-menu-select "$@" | omk_resolve
 }
-export -f forward_relabel reverse_relabel omarchy-menu-select
 
-if [[ $1 == "--print" || $1 == "-p" ]]; then
-  omarchy-menu-keybindings "$@" | forward_relabel
-  exit
+export -f omk_transform omk_resolve omarchy-menu-select
+
+OMK_MAP=$(mktemp -t omarchy-keybindings-map.XXXXXX) || exit 1
+export OMK_MAP
+
+# Not `exec`: the map file has to outlive the real script and be cleaned up
+# afterwards.
+if [[ ${1:-} == "--print" || ${1:-} == "-p" ]]; then
+  OMK_MAP="" omarchy-menu-keybindings "$@" | OMK_MAP="" omk_transform | sed $'s/\t/  /'
+  status=${PIPESTATUS[0]}
+else
+  omarchy-menu-keybindings "$@"
+  status=$?
 fi
 
-exec omarchy-menu-keybindings "$@"
+rm -f "$OMK_MAP"
+exit "$status"
