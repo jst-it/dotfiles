@@ -139,13 +139,6 @@ o.bind("SUPER + F11", "Toggle window borders", "omarchy-borders-toggle")
 -- ~/.local/bin/omarchy-airpods-call-mode.
 o.bind("SUPER + CTRL + M", "Toggle AirPods call mode", "omarchy-airpods-call-mode")
 
--- Proton VPN on/off (~/.local/bin/omarchy-protonvpn-toggle). The script was
--- already here but never bound. SUPER+CTRL is the system-toggle tier, which
--- puts it next to the other connectivity/state toggles (nightlight on
--- SUPER+CTRL+N, idle lock on SUPER+CTRL+I). G for "guard" - V, P and N are
--- all taken at this tier.
-o.bind("SUPER + CTRL + G", "Toggle Proton VPN", "omarchy-protonvpn-toggle")
-
 -- Force a Proton Drive sync of ~/Documents/School right now. Normally driven
 -- by protondrive-watch.service (inotify) plus protondrive-sync.timer, so this
 -- is only the "I need this on the other machine in the next ten seconds"

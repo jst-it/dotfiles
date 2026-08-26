@@ -77,7 +77,6 @@ bin_scripts=(
   omarchy-launch-slack
   omarchy-list-apps-for-pin
   omarchy-menu-keybindings-relabeled
-  omarchy-protonvpn-toggle
   omarchy-rotate-windows
   omarchy-screenrecord-copy-last
   omarchy-screenrecord-latest

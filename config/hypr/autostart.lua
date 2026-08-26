@@ -22,9 +22,3 @@
 -- profile was last active, breaking the "^...-Default$" window rules.
 o.exec_on_start("sleep 3 && " .. os.getenv("HOME") .. "/.local/bin/ws4-social-layout")
 o.exec_on_start("sleep 5 && " .. os.getenv("HOME") .. "/.local/bin/ws5-music-layout")
-
--- Proton VPN's GUI and CLI cannot run at the same time (the CLI refuses to
--- act while the GUI process is alive), so it is NOT autostarted here — doing
--- so would permanently break the jkoestinger.vpn bar widget, whose Proton
--- backend drives the `protonvpn` CLI. Launch the GUI manually when you want
--- its tray icon, and quit it again to get the widget working.
