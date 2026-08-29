@@ -12,10 +12,8 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    // Rebranded: \ue900 is the Omarchy square logo, and it only exists in the
-    // "omarchy" icon font. Dropping fontFamily falls back to bar.fontFamily,
-    // the Nerd Font the rest of the bar glyphs already use.
-    text: "\udb82\udcc7"
+    text: "\ue900"
+    fontFamily: "omarchy"
     horizontalMargin: 7.5
     onPressed: function(button) {
       if (!root.bar) return
