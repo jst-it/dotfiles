@@ -46,6 +46,22 @@ done
 mirror ".config/omarchy/shell.json" "config/omarchy/shell.json"
 mirror ".config/omarchy/extensions/omarchy-menu.jsonc" "config/omarchy/extensions/omarchy-menu.jsonc"
 mirror ".config/omarchy/theme-picker-allowlist" "config/omarchy/theme-picker-allowlist"
+
+# CleanOS rebrand: the ASCII the screensaver and About screen render, the pixel
+# marks they and the Plymouth/SDDM logo are generated from, and the generator
+# itself. Explicit filenames rather than the whole directory, to leave the
+# *.omarchy-<timestamp> backups of the stock Omarchy art out of the repo.
+mkdir -p "$REPO/config/omarchy/branding"
+find "$REPO/config/omarchy/branding" -maxdepth 1 -type f -delete
+for f in "$HOME"/.config/omarchy/branding/{about.txt,screensaver.txt,README.cleanos.md} \
+         "$HOME"/.config/omarchy/branding/cleanos-*; do
+  [[ -e "$f" ]] || continue
+  cp "$f" "$REPO/config/omarchy/branding/$(basename "$f")"
+done
+
+# Full copy of /etc/fastfetch/config.jsonc with the OS row rebranded; see the
+# header comment in the file for what that costs.
+mirror ".config/fastfetch/config.jsonc" "config/fastfetch/config.jsonc"
 mirror ".config/foot/foot.ini" "config/foot/foot.ini"
 mirror ".config/cliamp/config.toml" "config/cliamp/config.toml"
 mirror ".config/cliamp/playlists/" "config/cliamp/playlists/"
