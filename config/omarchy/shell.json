@@ -27,7 +27,7 @@
       ],
       "left": [
         {
-          "id": "mrrobot.menu"
+          "id": "omarchy.menu"
         },
         {
           "id": "omarchy.workspaces"
@@ -75,11 +75,5 @@
     "screensaver": 150
   },
   "version": 1,
-  "plugins": [],
-  "disabledPlugins": [
-    "omarchy.menu"
-  ],
-  "cloneSourceRestores": [
-    "mrrobot.menu"
-  ]
+  "plugins": []
 }

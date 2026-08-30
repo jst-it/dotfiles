@@ -29,7 +29,8 @@
 #
 # Row format: omarchy-menu-select accepts "<glyph><TAB><label>" and documents
 # that the glyph is rendered but never returned with the selection (see
-# Menu.qml:530 in the cloned mrrobot.menu plugin). So the glyphs are free -
+# Menu.qml in the packaged omarchy.menu plugin, under
+# /usr/share/omarchy/shell/plugins/menu/). So the glyphs are free -
 # they cannot affect dispatch.
 #
 # The keysym side is always the Num-Lock-OFF variant (KP_END, KP_DOWN, ...)
