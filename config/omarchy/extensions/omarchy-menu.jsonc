@@ -43,25 +43,6 @@
   // (so future installs auto-appear) plus only the stock themes listed in
   // ~/.config/omarchy/theme-picker-allowlist. See
   // ~/.local/bin/omarchy-theme-switcher-curated.
-  "style.theme": {"icon":"󰸌","label":"Theme","aliases":["theme","themes"],"action":"theme=$(omarchy-theme-switcher-curated); [[ -n $theme ]] && omarchy-theme-set \"$theme\""},
+  "style.theme": {"icon":"󰸌","label":"Theme","aliases":["theme","themes"],"action":"theme=$(omarchy-theme-switcher-curated); [[ -n $theme ]] && omarchy-theme-set \"$theme\""}
 
-  // Custom quick menu, reached as the "Favorites" row of the regular Omarchy
-  // menu. (The top-left bar button used to open this route directly via a
-  // cloned mrrobot.menu plugin; that clone was removed 2026-08-30 and the
-  // button now opens the stock menu at "root".) Power actions reuse the
-  // exact same commands as the stock system.* rows, then pinned apps below.
-  // Add more apps by adding another "favorites.<name>" row here (direct
-  // child of "favorites", same level as lock/sleep/shutdown, so it shows
-  // on the same screen with no extra submenu click) - hot-reloads on save,
-  // no plugin/QML edit needed.
-  "favorites": {"icon":"\udb81\udcce","label":"Favorites"},
-  "favorites.lock": {"icon":"\uf023","label":"Lock","action":"omarchy-system-lock"},
-  "favorites.sleep": {"icon":"󰒲","label":"Sleep","when":"! omarchy-toggle-enabled suspend-off","action":"systemctl suspend"},
-  "favorites.shutdown": {"icon":"󰐥","label":"Shutdown","action":"omarchy-system-shutdown"},
-  "favorites.discord": {"icon":"󰙯","label":"Discord","action":"omarchy-launch-webapp https://discord.com/channels/@me --profile-directory=Default"},
-  "favorites.ticktick": {"icon":"󰄵","label":"TickTick","action":"omarchy-launch-or-focus 'ticktick' 'uwsm-app -- ticktick'"},
-  "favorites.chromium-personal": {"icon":"\uf488","label":"Chromium (Personal)","action":"omarchy-launch-browser-personal"},
-  "favorites.chromium-school": {"icon":"\uf488","label":"Chromium (School)","action":"chromium --profile-directory='Profile 2' --class=Chromium-School"},
-  "favorites.terminal": {"icon":"\uf489","label":"Terminal","action":"xdg-terminal-exec"},
-  "favorites.btop": {"icon":"\udb80\udc3b","label":"btop++","action":"gtk-launch btop"}
 }
