@@ -277,15 +277,6 @@ Item {
       script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
       icon: "\udb81\udc0b",
       actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + Util.shellQuote(value) }
-    },
-    // Custom: searchable installed-apps list for pinning to the Favorites
-    // menu (see favorites.add in the user extensions.jsonc). volatile so a
-    // newly installed app shows up without restarting the shell.
-    "favorite-app-picker": {
-      script: "omarchy-list-apps-for-pin",
-      icon: "\udb80\udc3b",
-      volatile: true,
-      actionFor: function(value) { return "omarchy-favorites-pin-app " + Util.shellQuote(value) }
     }
   })
 

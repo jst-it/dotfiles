@@ -62,10 +62,5 @@
   "favorites.chromium-personal": {"icon":"\uf488","label":"Chromium (Personal)","action":"omarchy-launch-browser-personal"},
   "favorites.chromium-school": {"icon":"\uf488","label":"Chromium (School)","action":"chromium --profile-directory='Profile 2' --class=Chromium-School"},
   "favorites.terminal": {"icon":"\uf489","label":"Terminal","action":"xdg-terminal-exec"},
-  "favorites.btop": {"icon":"\udb80\udc3b","label":"btop++","action":"gtk-launch btop"},
-  // FAVORITES_APPS_INSERT_MARKER - omarchy-favorites-pin-app inserts newly
-  // pinned "favorites.<app>" rows right above this line, so they land
-  // after the built-ins above and "Add app..." stays last. Don't remove
-  // this comment.
-  "favorites.add": {"icon":"\udb81\udc15","label":"Add app...","provider":"favorite-app-picker"}
+  "favorites.btop": {"icon":"\udb80\udc3b","label":"btop++","action":"gtk-launch btop"}
 }

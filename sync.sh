@@ -70,12 +70,10 @@ bin_scripts=(
   compress-video-19.5mb
   nautilus-trim-video-dialog
   omarchy-borders-toggle
-  omarchy-favorites-pin-app
   omarchy-gaps-adjust
   omarchy-gaps-reset
   omarchy-launch-browser-personal
   omarchy-launch-slack
-  omarchy-list-apps-for-pin
   omarchy-menu-keybindings-relabeled
   omarchy-rotate-windows
   omarchy-screenrecord-copy-last
